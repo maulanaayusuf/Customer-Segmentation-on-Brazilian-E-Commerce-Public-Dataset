@@ -149,11 +149,29 @@ Monetary (M) : is the total amount of money a customer spent in that given peri
 - Although telephony category is a lot in lost cheap customers, it is also the best-selling category for new customers. This indicates that the telephone category is effective for bringing in new customers
 
 
+**Lost Customers**
+![image](https://user-images.githubusercontent.com/85357151/132891317-8e6e6e57-9426-4a6e-a172-1620c46b73a3.png)
+
+**Loyal Customers**
+![image](https://user-images.githubusercontent.com/85357151/132891355-63520bcd-3076-4c0f-9eaf-8b184933ad1d.png)
 
 
+- Categories bed_bath_table, furniture_decor,  computer_accessories, and sport_leisure are best-seller categories in  lost customer segments, but also the best-seller for loyal customers. 
+- This indicates that these categories have the potential to be used as promos for lost customers so that they become active customers again
 
 
+# Recommendation
 
+- Create a loyalty program/membership program which customers will get rewards for every transaction
+- Send engaging emails to customers, especially to potential customers
+- Send Notification to potential, almost lost, and lost customers
+- To get new customers, we can provide discount promos for the telephony and health_beauty category
+- Create bundling package: bed_bath_table, housewares_and furniture_decor 
+- Give promos, especially to the top 10 product categories in potential customers
+- Give rewards or make competition for sellers to increase their productivity
+
+
+# Thank you
 
 
 
