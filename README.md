@@ -2,7 +2,14 @@
 # Customer-Segmentation-on-Brazilian-E-Commerce-Public-Dataset
 RFM analysis using R Programming
 
-# Basdasdasdasdasda
+# Summary
+This dataset was generously provided by Olist, the largest department store in Brazilian marketplaces. This dataset total has 100k Rows and 54 Column.
+RFM segmentation is one method for segmenting customers by measuring the level of recency, frequency and monetary
+
+**The result of this project is 
+
+
+
 
 
 
