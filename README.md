@@ -8,8 +8,11 @@ RFM segmentation is one method for segmenting customers by measuring the level o
 
 **The result of this project is** 
 -Getting information about monthly GMV
+
 -Gaining insight about potential sellers
+
 -Customer segments.
+
 -Category Product Recommendation
 
 
