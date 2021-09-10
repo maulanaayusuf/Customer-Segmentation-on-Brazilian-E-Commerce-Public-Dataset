@@ -1,0 +1,698 @@
+---
+title: "Final Project Dibimbing.id- EDA & RFM Brazilian E-commerce" by Maulana Yusuf
+---
+
+***Data Preparation
+
+```{r}
+#Load the Library
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(lubridate)
+library(rfm)
+```
+
+```{r}
+#Read all data
+product_category_name_translation <- read_csv ("product_category_name_translation.csv")
+olist_orders_dataset <- read_csv("olist_orders_dataset.csv")
+olist_order_payments_dataset <- read_csv("olist_order_payments_dataset.csv")
+olist_order_items_dataset <- read_csv("olist_order_items_dataset.csv")
+olist_customers_dataset <- read_csv("olist_customers_dataset.csv")
+olist_seller_dataset <- read_csv("olist_sellers_dataset.csv")
+olist_products_dataset <- read_csv("olist_products_dataset.csv")
+
+```
+
+```{r}
+#joining datasets
+olist_dataset <- olist_customers_dataset%>%
+  inner_join(olist_orders_dataset, by = "customer_id")%>%
+  inner_join(olist_order_items_dataset, by = "order_id")%>%
+  inner_join(olist_seller_dataset, by= "seller_id")%>%
+  inner_join(olist_order_payments_dataset, by = "order_id")%>%
+  inner_join(olist_products_dataset, by = "product_id")%>%
+  inner_join(product_category_name_translation, by= "product_category_name")
+```
+
+
+```{r}
+#melihat keseluruhan data untuk menentukan column mana yang akan dipakai
+olist_dataset
+
+```
+```{r}
+sum(is.na(olist_dataset))
+```
+```{r}
+summary(olist_dataset)
+```
+#missing value banyak terdapat di order_delivered_customer_date dan order_delivered_carrier_date. karena kita tidak akan memakai kolom itu untuk pembahasan kali ini, maka kita tidak perlu mengatasi baris yang memiliki missing value
+
+
+
+```{r}
+#memilih column yang akan dipakai
+olist_data <- olist_dataset%>%
+  select(customer_unique_id, customer_city, customer_state, order_id, order_status, order_purchase_timestamp, order_item_id, seller_id, price, payment_type, payment_installments,product_category_name_english)
+
+olist_data
+```
+
+
+```{r}
+sum(is.na(olist_data))
+
+```
+
+
+```{r}
+glimpse(olist_data)
+```
+
+```{r}
+
+#change format
+olist_data$order_purchase_timestamp <- as.Date(olist_data$order_purchase_timestamp)
+
+```
+
+
+
+
+```{r}
+#check the contents of order_status column
+olist_data%>%
+  count(order_status)%>%
+  arrange(desc(n))%>%
+  mutate(percentage= n/sum(n)*100)
+  
+```
+#canceled and unavailable tidak kita gunakan kali ini karena hanya menggunakan pembelian
+```{r}
+#mendrop canceled dan unavailable pada kolom order status
+olist_data <- olist_data%>%
+  filter(order_status!= "canceled"& order_status!="unavailable")
+```
+
+
+
+
+
+*EXPLORATORY DATA ANALYSIS
+
+#Menghitung nilai GMV 
+```{r}
+#dikarenakan payment value berbeda dengan GMV maka kita menghitung GMV nya
+olist_data <- olist_data%>%
+  mutate(GMV= order_item_id*price)
+```
+
+
+```{r}
+#Menghitung nilai GMV bulanan, dikarenakan pada 2018 bulan 09 baru berjalan 3 hari maka kita akan filter
+olist_data%>%
+  filter(order_purchase_timestamp <= "2018-08-30")%>%
+  group_by(month= floor_date (order_purchase_timestamp, "month"))%>%
+  summarise(GMV= sum(GMV)) -> Monthly_GMV
+
+
+
+#create line plot to check GMV monthly
+Monthly_GMV%>%
+ggplot(aes(x=month,y=GMV))+
+geom_line(color='blue')+ theme_bw()
+```
+#GMV memiliki kenaikan yang pesat mulai pada tanggal 2017-01-01, tetapi pada 3 bulan terakhir nilai GMV menurun. memiliki puncak penjualan pada november 2017, naik sekitar 54% dari bulan sebelumnya. jadi strategi yang digunakan pada bulan sebelumnya terbukti efektif dan dapat dilakukan kembali
+
+
+```{r}
+olist_data%>%
+  count(customer_unique_id)
+```
+
+
+```{r}
+#Create total category product sales
+olist_data%>%
+  group_by(product_category_name_english)%>%
+  summarise(total_gmv= sum(GMV)) -> total_GMV_product
+  
+#select best 10 category product
+ total_GMV_product%>%
+  arrange(desc(total_gmv))%>%
+  mutate(percent= total_gmv/sum(total_gmv)*100)%>%
+   head(10) -> top_GMV_product
+   
+
+top_GMV_product
+
+
+#create barplot
+top_GMV_product%>%
+ggplot(aes(y=reorder(product_category_name_english,percent),x=percent,fill=product_category_name_english,label=percent))+
+    geom_bar(stat='identity')+
+geom_text(aes(x=2,label=round(percent,2), hjust=-0.05))+
+theme(legend.key.size = unit(0.5, 'cm'),legend.text = element_text(size=10))
+```
+
+
+```{r}
+#count cutomer state
+olist_data%>%
+  count(customer_state)%>%
+  mutate(percent=n/sum(n)*100)%>%
+  arrange(desc(percent))
+
+```
+top 5 country menyumbangkan kurang lebih 77% dari total order
+
+
+
+
+```{r}
+#select top 5 country
+Target <- c("SP", "RJ", "MG", "RS", "PR")
+olist_data%>%
+  filter(customer_state %in% Target)->top_country
+```
+
+```{r}
+#count customer city
+top_country%>%
+  count(customer_city)%>%
+  mutate(percent=n/sum(n)*100)%>%
+  arrange(desc(percent))
+```
+customer sao paulo dan rio de janeiro menyumbangkan sekitar 29% dari seluruh order di 5 top country. atau sekitar 22% dari seluruh order di platform
+
+
+
+
+
+
+
+```{r}
+#Menghitung GMV dari tiap seller
+olist_data%>%
+  group_by(seller_id)%>%
+  summarise(GMV=sum(GMV))%>%
+  arrange(desc(GMV))%>%
+  mutate(cumulative=(cumsum(GMV)))%>%
+  mutate(cum_percent=round(cumulative/sum(GMV)*100,2))->seller_gmv
+
+```
+
+
+
+```{r}
+#membuat kolom baru untuk kelompok kelas seller
+#untuk penamaan kelas sellernya kita lihat secara manual 
+seller_rank <- seller_gmv%>%
+  mutate(seller_class= case_when( cum_percent<=20 ~"17 seller", cum_percent <= 40  & cum_percent >=20.01 ~"56 seller", cum_percent<=60 & cum_percent>=40.01 ~" 138 Seller", cum_percent<=80 & cum_percent>=60.01 ~ "320 seller ", TRUE~"2459 seller" ))
+
+
+seller_rank
+```
+# dari total 2990 seller :
+#1-17 top seller memberikaan sekitar 20% dari total GMV
+#1-73 top seller memberikan sekiar 40% dari total GMV
+#1-211 top seller memberikan sekitar 60% dari total GMV
+#1-531 top seller memberikan sekitar 80% dari toal GMV
+
+
+```{r}
+#vISUALISASI
+
+#membagi menjadi 5 kelas
+
+seller_rank%>%
+ group_by(seller_class)%>%
+  summarise(total_sales=sum(GMV))%>%
+  mutate(percent= total_sales/ sum(total_sales)*100)->five_class_seller
+
+#membuat visualisasi
+five_class_seller%>%
+   ggplot(aes(x = "", y = total_sales, fill = seller_class)) +
+  geom_col() +
+ #membuat jadi pie chart
+  coord_polar(
+    theta = "y", 
+    start = 0
+  ) + 
+  #menambahkan text angka pada pie chart
+  geom_text(aes(x=1.2 ,label = round(percent, 2)) , position = position_stack(vjust =0.5))+
+  theme_void()
+```
+penjualan 16 top seller hampir sama dengan 2459 seller 
+
+
+
+```{r}
+#counting payment type
+olist_data%>%
+  count(payment_type)
+```
+
+```{r}
+#melihat produk yang paling laku dengan menggunakan credit card
+olist_data%>%
+  filter(payment_type== "credit_card")%>%
+  count(product_category_name_english)%>%
+  arrange(desc(n))
+
+```
+
+
+
+```{r}
+#melihat produk yang paling laku dengan menggunakan credit card
+olist_data%>%
+  filter(payment_type== "boleto")%>%
+  count(product_category_name_english)%>%
+  arrange(desc(n))
+
+```
+
+
+
+
+
+
+
+
+
+*** MODELING ***
+
+
+
+```{r}
+#Sellect data for modelling
+data <- olist_data%>%
+  select(order_purchase_timestamp , customer_unique_id, order_item_id,order_id,
+         price,payment_value= 'GMV')
+
+#menentukan analysis date.. anggap saja kita menganalisis 
+analysis_date <- as.Date('2018-09-06')
+```
+
+
+```{r}
+#membuat data untuk dilakukan permodelan
+data_rfm <- data%>%
+  mutate(total_price= order_item_id*price)%>%
+  group_by(customer_unique_id)%>%
+  summarise(revenue=sum(price),
+    last_time= max(order_purchase_timestamp), 
+    total_order= n(),
+    recency_days=as.numeric(as.Date('2018-09-06')- max(order_purchase_timestamp)))
+
+data_rfm
+  
+```
+
+```{r}
+#membuat tabel rfm menggunakan fungsi "rfm_table_customer" dari package rfm
+rfm_result <-
+  rfm_table_customer(data=data_rfm, customer_id= customer_unique_id, 
+                     n_transactions = total_order, recency_days, 
+                     revenue,recency_bins = 5,
+                     frequency_bins = 5,
+                     monetary_bins = 5, analysis_date)
+
+rfm_result
+```
+
+```{r}
+rfm_heatmap(rfm_result)
+```
+#nilai Frequency hanya ada 1 dan 5, itu menandakan bahwa perbandingan jumlah konsumen yang order 1x dengan returning customer tidak seimbang
+
+```{r}
+rfm_bar_chart(rfm_result)
+```
+#frequency 1 memiliki jumlah jauh lebih banyak dari frequency 5
+#pada frequency 5, jumlah monetary makin tinggi..
+
+
+```{r}
+rfm_fm_plot(rfm_result)
+
+```
+#banyak outlier, data cenderung terpusat pada frequency rendah dan monetary rendah
+# makin tinggi frequenci, jumlahnya customeernya makin dikit
+#nilai monetary yang tinggi cenderung ada pada nilai frequency > 1
+
+
+
+```{r}
+rfm_histograms(rfm_result)
+```
+```{r}
+rfm_order_dist(rfm_result)
+```
+
+```{r}
+rfm_rm_plot(rfm_result)
+```
+
+```{r}
+rfm_rf_plot(rfm_result)
+```
+
+
+
+#membagi segment customer
+#nilai 2 menandakan lebih baik dari nilai 1
+- Best customer         : R=5         F=5           M=5       # semuanya 1
+- Loyal customer        : R=3-5       F=5,          M=1-5     # R=3-5 dan F = 5
+- Potential customer    : R=1-5,      F=1-5,        M=3-5     # M= 3-5
+- New customer          : R=43-5,     F=1,          M= 1-5    # R= 4-5
+- Almost lost           : R=2-3,      F=1-5,        M= 1-5    # R= 2-3
+- Lost Customer         : R= 1-2      F= 1-5        M= 1-5    # R= 1-2, M= 1-5
+- Lost Cheap customer   : R= 1-2,     F= 1          M= 1-2    # Semuanya 1
+
+
+```{r}
+segment_names <- c("Best Customers", "Loyal Customers", "Potential Customers", 
+  "New Customers", "Almost Lost Customers", "Lost Customers", "Lost Cheap Customers" )
+
+recency_lower <-   c(5, 3, 1, 4, 2, 1, 1)
+recency_upper <-   c(5, 5, 5, 5, 3, 2, 1)
+frequency_lower <- c(5, 5, 1, 1, 1, 5, 1)
+frequency_upper <- c(5, 5, 1, 5, 5, 5, 1)
+monetary_lower <-  c(5, 1, 2, 1, 1, 1, 1)
+monetary_upper <-  c(5, 5, 5, 5, 5, 5, 1)
+
+```
+
+
+```{r}
+#menyimpan hasil segmentation
+segmentation <-  rfm_segment(rfm_result, segment_names, recency_lower, recency_upper,
+frequency_lower, frequency_upper, monetary_lower, monetary_upper)
+
+segmentation
+```
+
+```{r}
+segmentation%>%
+  filter(segment== "Others")
+```
+
+
+```{r}
+#Viasualisasi segment
+segmentation%>%
+  count(segment)%>%
+  mutate(percent= n/sum(n)*100)->segment_count
+
+
+segment_count
+
+
+segment_count%>%
+  ggplot(aes(y= reorder(segment,percent), x= n, fill= segment, label=percent))+
+  geom_bar(stat='identity')+
+  geom_text(aes(x=2,label=round(percent,2), hjust=-0.05))+
+theme(legend.key.size = unit(0.5, 'cm'),legend.text = element_text(size=10))
+  
+```
+
+
+```{r}
+rfm_plot_median_monetary(segmentation)
+```
+
+```{r}
+rfm_plot_median_recency(segmentation)
+```
+
+```{r}
+rfm_plot_median_frequency(segmentation)
+
+```
+
+```{r}
+#create dataframe segment customer for preparation inner join
+segment_customer <- segmentation%>%
+  select('customer_id', 'segment')
+```
+
+
+```{r}
+#combining data order and data segment customer
+data_segment <- olist_data%>%
+  inner_join(segment_customer, by = c("customer_unique_id" = "customer_id"))
+
+```
+
+
+```{r}
+sum(is.na(data_segment))
+```
+
+
+
+#Check Potential Customers
+```{r}
+data_segment%>%
+  filter(segment =="Potential Customers")%>%
+  group_by(product_category_name_english)%>%
+  summarise(total_gmv= sum(GMV))%>%
+  arrange(desc(total_gmv))->total_GMV_Category_Potential_Customers
+
+
+#select best 10 category product
+ total_GMV_Category_Potential_Customers %>%
+  arrange(desc(total_gmv))%>%
+  mutate(percent= total_gmv/sum(total_gmv)*100)%>%
+   head(10) -> top_GMV_Category_Potential_Customers
+   
+
+top_GMV_Category_Potential_Customers
+
+
+#create barplot
+top_GMV_Category_Potential_Customers%>%
+ggplot(aes(y=reorder(product_category_name_english,percent),x=percent,fill=product_category_name_english,label=percent))+
+    geom_bar(stat='identity')+
+geom_text(aes(x=2,label=round(percent,2), hjust=-0.05))+
+theme(legend.key.size = unit(0.5, 'cm'),legend.text = element_text(size=10))
+```
+
+
+#Check Almost Lost Customers
+```{r}
+data_segment%>%
+  filter(segment =="Almost Lost Customers")%>%
+  group_by(product_category_name_english)%>%
+  summarise(total_gmv= sum(GMV))%>%
+  arrange(desc(total_gmv))->total_GMV_Category_Almost_Lost
+
+
+#select best 10 category product
+ total_GMV_Category_Almost_Lost %>%
+  arrange(desc(total_gmv))%>%
+  mutate(percent= total_gmv/sum(total_gmv)*100)%>%
+   head(10) -> top_GMV_Category_Almost_Lost
+   
+
+top_GMV_Category_Almost_Lost
+
+
+#create barplot
+top_GMV_Category_Almost_Lost%>%
+ggplot(aes(y=reorder(product_category_name_english,percent),x=percent,fill=product_category_name_english,label=percent))+
+    geom_bar(stat='identity')+
+geom_text(aes(x=2,label=round(percent,2), hjust=-0.05))+
+theme(legend.key.size = unit(0.5, 'cm'),legend.text = element_text(size=10))
+```
+
+#Check New Customers
+```{r}
+data_segment%>%
+  filter(segment =="New Customers")%>%
+  group_by(product_category_name_english)%>%
+  summarise(total_gmv= sum(GMV))%>%
+  arrange(desc(total_gmv))->total_GMV_Category_New_Customers
+
+
+#select best 10 category product
+ total_GMV_Category_New_Customers %>%
+  arrange(desc(total_gmv))%>%
+  mutate(percent= total_gmv/sum(total_gmv)*100)%>%
+   head(10) -> top_GMV_Category_New_Customers
+   
+
+top_GMV_Category_New_Customers
+
+
+#create barplot
+top_GMV_Category_New_Customers%>%
+ggplot(aes(y=reorder(product_category_name_english,percent),x=percent,fill=product_category_name_english,label=percent))+
+    geom_bar(stat='identity')+
+geom_text(aes(x=2,label=round(percent,2), hjust=-0.05))+
+theme(legend.key.size = unit(0.5, 'cm'),legend.text = element_text(size=10))
+```
+
+#Check Loyal Customer
+```{r}
+data_segment%>%
+  filter(segment =="Loyal Customers")%>%
+  group_by(product_category_name_english)%>%
+  summarise(total_gmv= sum(GMV))%>%
+  arrange(desc(total_gmv))->total_GMV_Category_Loyal_Customers
+
+
+#select best 10 category product
+ total_GMV_Category_Loyal_Customers %>%
+  arrange(desc(total_gmv))%>%
+  mutate(percent= total_gmv/sum(total_gmv)*100)%>%
+   head(10) -> top_GMV_Category_Loyal_Customers
+   
+
+top_GMV_Category_Loyal_Customers
+
+
+#create barplot
+top_GMV_Category_Loyal_Customers%>%
+ggplot(aes(y=reorder(product_category_name_english,percent),x=percent,fill=product_category_name_english,label=percent))+
+    geom_bar(stat='identity')+
+geom_text(aes(x=2,label=round(percent,2), hjust=-0.05))+
+theme(legend.key.size = unit(0.5, 'cm'),legend.text = element_text(size=10))
+```
+
+
+#Check Lost Cheap Customer
+```{r}
+data_segment%>%
+  filter(segment == "Lost Cheap Customers")%>%
+  group_by(product_category_name_english)%>%
+  summarise(total_gmv= sum(GMV))%>%
+  arrange(desc(total_gmv))->total_GMV_Category_Lost_Cheap
+
+
+#select best 10 category product
+ total_GMV_Category_Lost_Cheap %>%
+  arrange(desc(total_gmv))%>%
+  mutate(percent= total_gmv/sum(total_gmv)*100)%>%
+   head(10) -> top_GMV_Category_Lost_Cheap
+   
+
+top_GMV_Category_Lost_Cheap
+
+
+#create barplot
+top_GMV_Category_Lost_Cheap%>%
+ggplot(aes(y=reorder(product_category_name_english,percent),x=percent,fill=product_category_name_english,label=percent))+
+    geom_bar(stat='identity')+
+geom_text(aes(x=2,label=round(percent,2), hjust=-0.05))+
+theme(legend.key.size = unit(0.5, 'cm'),legend.text = element_text(size=10))
+```
+
+
+
+
+#Check Lost Customers
+```{r}
+data_segment%>%
+  filter(segment =="Lost Customers")%>%
+  group_by(product_category_name_english)%>%
+  summarise(total_gmv= sum(GMV))%>%
+  arrange(desc(total_gmv))->total_GMV_Category_Lost_Customers
+
+
+#select best 10 category product
+ total_GMV_Category_Lost_Customers%>%
+  arrange(desc(total_gmv))%>%
+  mutate(percent= total_gmv/sum(total_gmv)*100)%>%
+   head(10) -> top_GMV_Category_Lost_Customers
+   
+
+top_GMV_Category_Lost_Customers
+
+
+#create barplot
+top_GMV_Category_Lost_Customers%>%
+ggplot(aes(y=reorder(product_category_name_english,percent),x=percent,fill=product_category_name_english,label=percent))+
+    geom_bar(stat='identity')+
+geom_text(aes(x=2,label=round(percent,2), hjust=-0.05))+
+theme(legend.key.size = unit(0.5, 'cm'),legend.text = element_text(size=10))
+```
+
+
+
+#Best Customers
+```{r}
+data_segment%>%
+  filter(segment =="Best Customers")%>%
+  group_by(product_category_name_english)%>%
+  summarise(total_gmv= sum(GMV))%>%
+  arrange(desc(total_gmv))->total_GMV_Category_Best_Customers
+
+
+#select best 10 category product
+ total_GMV_Category_Best_Customers%>%
+  arrange(desc(total_gmv))%>%
+  mutate(percent= total_gmv/sum(total_gmv)*100)%>%
+   head(10) -> top_GMV_Category_Best_Customers
+   
+
+top_GMV_Category_Best_Customers
+
+
+#create barplot
+top_GMV_Category_Best_Customers%>%
+ggplot(aes(y=reorder(product_category_name_english,percent),x=percent,fill=product_category_name_english,label=percent))+
+    geom_bar(stat='identity')+
+geom_text(aes(x=2,label=round(percent,2), hjust=-0.05))+
+theme(legend.key.size = unit(0.5, 'cm'),legend.text = element_text(size=10))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
