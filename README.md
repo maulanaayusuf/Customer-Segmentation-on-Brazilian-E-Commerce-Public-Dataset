@@ -13,7 +13,8 @@ RFM segmentation is one method for segmenting customers by measuring the level o
 -Category Product Recommendation
 
 
-
+\coba
+\ini
 
 
 
